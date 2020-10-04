@@ -84,48 +84,50 @@ DEL	=	$7f
 ; These are (some of) the IL opcodes.  See Tom's C code or the Tiny
 ; Basic Experimenter's book if you want to learn what they're about.
 ;
-SX	=	$00
-SX0	=	$00
-SX1	=	$01
-SX2	=	$02
-SX3	=	$03
-SX4	=	$04
-SX5	=	$05
-SX6	=	$06
-SX7	=	$07
-NO	=	$08	;No-op
-LB	=	$09
-LN	=	$0a
-DS	=	$0b
-SP	=	$0c
-SB	=	$10
-RB	=	$11
-FV	=	$12
-SV	=	$13
-GS	=	$14
-RS	=	$15
-GO	=	$16
-NE	=	$17
-AD	=	$18
-SU	=	$19
-MP	=	$1a
-DV	=	$1b
-CP	=	$1c
-NX	=	$1d
-LS	=	$1f
-PN	=	$20
-PQ	=	$21
-PT	=	$22
-NL	=	$23
-PC	=	$24
-GL	=	$27
-IL	=	$2a
-MT	=	$2b
-XQ	=	$2c
-WS	=	$2d
-US	=	$2e
-RT	=	$2f
-BR	=	$40
+; "Number" refers to a 16-bit (2-byte) word
+;
+SX	=	$00	;Stack Exchange
+SX0	=	$00	;Stack Exchange top byte with byte at offset 0
+SX1	=	$01	;Stack Exchange top byte with byte at offset 1
+SX2	=	$02	;Stack Exchange top byte with byte at offset 2
+SX3	=	$03	;Stack Exchange top byte with byte at offset 3
+SX4	=	$04	;Stack Exchange top byte with byte at offset 4
+SX5	=	$05	;Stack Exchange top byte with byte at offset 5
+SX6	=	$06	;Stack Exchange top byte with byte at offset 6
+SX7	=	$07	;Stack Exchange top byte with byte at offset 7
+NO	=	$08	;No Operation
+LB	=	$09	;Push Literal Byte onto Stack
+LN	=	$0a	;Push Literal Number
+DS	=	$0b	;Duplicate Top Number
+SP	=	$0c	;Stack Pop
+SB	=	$10	;Save BASIC Pointer
+RB	=	$11	;Restore BASIC Pointer
+FV	=	$12	;Fetch Variable
+SV	=	$13	;Store Variable
+GS	=	$14	;GOSUB Save
+RS	=	$15	;Restore Saved Line
+GO	=	$16	;GOTO
+NE	=	$17	;Negate (Two's Complement)
+AD	=	$18	;Add
+SU	=	$19	;Subtract
+MP	=	$1a	;Multiply
+DV	=	$1b	;Divide
+CP	=	$1c	;Compare
+NX	=	$1d	;Next BASIC Statement
+LS	=	$1f	;List The Program
+PN	=	$20	;Print Number
+PQ	=	$21	;Print BASIC String
+PT	=	$22	;Print Tab Character
+NL	=	$23	;Print New Line Character
+PC	=	$24	;Print Literal String
+GL	=	$27	;Get Input Line
+IL	=	$2a	;Insert BASIC Line
+MT	=	$2b	;Mark the BASIC program space Empty
+XQ	=	$2c	;Execute
+WS	=	$2d	;Stop
+US	=	$2e	;Machine Language Subroutine Call
+RT	=	$2f	;IL Subroutine Return
+BR	=	$40	;Relative Branch
 
 ;
 ;**********************************************************************
@@ -157,22 +159,24 @@ BR	=	$40
 ;LinePtr		ds	2	;pointer to/in current user statement
 ;Source		ds	2	;source pointer for memory moves
 
-UserProg	=	$20	;Start of user program area
-EndUser		=	$22	;End of user program/stack
-EndProg		=	$24	;End of Basic program
-GoStkTop	=	$26	;Top of Gosub stack
-LineNumber	=	$28	;Current Basic line number
-IlPtr		=	$2A	;pointer to current IL statement
-LinePtr		=	$2C	;pointer to/in current user statement
-Source		=	$2E	;source pointer for memory moves
-
-
 ;
-; 0030-007F       Input line buffer & Computation stack
+; 0040-006f       Input line buffer & Computation stack
 ;
-EXPRESS_STACK_SIZE	=	$30
-ExpressStack		=	$50
+EXPRESS_STACK_SIZE	=	$30	;Size of the express stack, in bytes
+ExpressStack		=	$40	;Start of express stack
 ExpressStackTop		=	ExpressStack + EXPRESS_STACK_SIZE-1
+
+UserProg	=	$70	;Start of user program area
+EndUser		=	$72	;End of user program/stack
+EndProg		=	$74	;End of Basic program
+GoStkTop	=	$76	;Top of Gosub stack
+LineNumber	=	$78	;Current Basic line number
+IlPtr		=	$7A	;pointer to current IL statement
+LinePtr		=	$7C	;pointer to/in current user statement
+Source		=	$7E	;source pointer for memory moves
+
+
+
 ;
 ; 0080-0081       Random Number Generator workspace
 ;
@@ -213,6 +217,13 @@ ExStackPtr		=	$C1
 pp_temp			=	$C3	;another temp for peek/poke
 UNK2			=	$C5
 GosubStkPtr		=	$C7	;Gosub stack pointer
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;R65X1 Equates
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+SerSta          = $16
+SerDat          = $17
+
 ;
 ;**********************************************************************
 ;
@@ -269,6 +280,30 @@ OUTCHAR		jmp	COUT
 ; condition must be held over to the next statement fetch (or repeated)
 ; to stop program execution also.
 ;
+
+
+; Get a character from the ACIA
+; Runs into SNDCHR to provide echo
+;
+CIN:	
+	LDA SerSta		;GET STATUS FROM ACIA
+	AND #$01		;CHECK FOR A CHARACTER
+	BEQ CIN			;Loop until we get one
+	LDA SerDat		;GET CHARACTER
+
+;
+;Send a character to the ACIA
+;
+COUT:
+	PHA			;Save the character to be printed
+COUT1:
+	LDA SerSta		;GET ACIA STATUS
+	AND #$40
+	BEQ COUT1		;IF STILL BUSY GO GET STATUS AGAIN
+	PLA			;Restore the character
+	AND #$7F		;Strip parity bit
+	STA SerDat		;SEND CHARACTER
+EXSC	RTS			;Return
 
 TSTBRK		nop	;dummy function always returns "no break"
 		clc	;default to no-break
@@ -1704,7 +1739,7 @@ DoRT	jsr	L045	; 26FD
 ; If BASIC pointer is pointing into the input line buffer, it is copied
 ; to the Saved Pointer; otherwise the two pointers are exchanged.
 ;
-DoSB	ldx	#$2C
+DoSB	ldx	#LinePtr
 	bne	L161	; 26C3
 DoRB	ldx	#Source
 L161	lda	$00,x
@@ -1878,29 +1913,3 @@ DefaultIL
 ; gets stored.  
 ;
 codeend	=	*
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;R65X1 Equates
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-SerSta          = $A000
-SerDat          = $A001
-
-; Get a character from the ACIA
-; Runs into SNDCHR to provide echo
-;
-CIN:	LDA SerSta		;GET STATUS FROM ACIA
-	AND #$01		;CHECK FOR A CHARACTER
-	BEQ CIN			;Loop until we get one
-	LDA SerDat		;GET CHARACTER
-
-;
-;Send a character to the ACIA
-;
-COUT:	PHA			;Save the character to be printed
-COUT1:	LDA SerSta		;GET ACIA STATUS
-	AND #$02
-	BEQ COUT1		;IF STILL BUSY GO GET STATUS AGAIN
-	PLA			;Restore the character
-	AND #$7F		;Strip parity bit
-	STA SerDat		;SEND CHARACTER
-EXSC	RTS			;Return

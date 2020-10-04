@@ -7,8 +7,8 @@ basic.hex: basic.bin
 basic.bin: basic.o
 	ld65 -t none -vm -m basic.map -o basic.bin basic.o
 
-basic.o: basic.asm
-	ca65 -g -l basic.lst --feature labels_without_colons -o basic.o basic.asm
+basic.o: basic.a65
+	ca65 -g -l basic.lst --feature labels_without_colons -o basic.o basic.a65
 
 clean:
 	$(RM) *.o *.lst *.map *.bin *.hex
